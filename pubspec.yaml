@@ -5,10 +5,10 @@ description: BIP-0032 like derivation for ed25519 curve
 repository: https://github.com/alepop/dart-ed25519-hd-key
 
 environment:
-  sdk: '>=2.0.0 <3.0.0'
+  sdk: '>=2.1.0 <3.0.0'
 
 dependencies:
-  cryptography: ^1.4.0
+  cryptography: ^2.0.0-nullsafety.2
 
 dev_dependencies:
   test: ^1.0.0

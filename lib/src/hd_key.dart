@@ -16,54 +16,66 @@ class _ED25519HD {
 
   const _ED25519HD();
 
-  KeyData derivePath(String path, Uint8List seedBytes,
-      {int offset = HARDENED_OFFSET}) {
-
+  Future<KeyData> derivePath(
+    String path,
+    Uint8List seedBytes, {
+    int offset = HARDENED_OFFSET,
+  }) async {
     if (!_ED25519HD._pathRegex.hasMatch(path)) {
       throw ArgumentError(
           "Invalid derivation path. Expected BIP32 path format");
     }
 
-    KeyData master = getMasterKeyFromSeed(seedBytes);
+    KeyData master = await getMasterKeyFromSeed(seedBytes);
     List<String> segments = path.split('/');
     segments = segments.sublist(1);
 
-    return segments.fold<KeyData>(master, (prevKeyData, indexStr) {
-      int index = int.parse(indexStr.substring(0, indexStr.length - 1));
-      return _getCKDPriv(prevKeyData, index + offset);
-    });
+    return await Stream.fromIterable(segments).fold<Future<KeyData>>(
+      Future.sync(() => master),
+      (prevKeyData, indexStr) async {
+        int index = int.parse(indexStr.substring(0, indexStr.length - 1));
+        return await _getCKDPriv(await prevKeyData, index + offset);
+      },
+    );
   }
 
-  Uint8List getPublicKey(Uint8List privateKey, [bool withZeroByte = true]) {
-    final signature = ed25519.newKeyPairFromSeedSync(PrivateKey(privateKey));
+  Future<Uint8List> getPublicKey(
+    Uint8List privateKey, [
+    bool withZeroByte = true,
+  ]) async {
+    final signature = await Ed25519().newKeyPairFromSeed(privateKey);
+    final pk = await signature.extractPublicKey();
     if (withZeroByte == true) {
       Uint8List dataBytes = Uint8List(33);
       dataBytes[0] = 0x00;
-      dataBytes.setRange(1, 33, signature.publicKey.bytes);
+      dataBytes.setRange(1, 33, pk.bytes);
       return dataBytes;
     } else {
-      return signature.publicKey.bytes;
+      return pk.bytes;
     }
   }
 
-  KeyData getMasterKeyFromSeed(Uint8List seedBytes) =>
-      _getKeys(seedBytes, _ED25519HD._curveBytes);
+  Future<KeyData> getMasterKeyFromSeed(Uint8List seedBytes) async =>
+      await _getKeys(seedBytes, _ED25519HD._curveBytes);
 
-  KeyData _getCKDPriv(KeyData data, int index) {
+  Future<KeyData> _getCKDPriv(KeyData data, int index) async {
     Uint8List dataBytes = Uint8List(37);
     dataBytes[0] = 0x00;
     dataBytes.setRange(1, 33, data.key);
     dataBytes.buffer.asByteData().setUint32(33, index);
-    return _getKeys(dataBytes, data.chainCode);
+    return await _getKeys(dataBytes, Uint8List.fromList(data.chainCode));
   }
 
-  KeyData _getKeys(Uint8List data, Uint8List keyParameter) {
-    final hmac = Hmac(sha512).newSink(secretKey: SecretKey(keyParameter));
+  Future<KeyData> _getKeys(Uint8List data, Uint8List keyParameter) async {
+    final hmac =
+        await Hmac.sha512().newMacSink(secretKey: SecretKey(keyParameter));
+
     hmac
       ..add(data)
       ..close();
 
-    final I = hmac.mac.bytes;
+    final mac = await hmac.mac();
+    final I = mac.bytes;
     final IL = I.sublist(0, 32);
     final IR = I.sublist(32);
 
